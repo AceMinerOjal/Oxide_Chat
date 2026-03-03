@@ -14,10 +14,20 @@ Terminal chat client for Oxide Chat using Ratatui.
 
 ```bash
 cd CLI
-cargo run -- ws://127.0.0.1:8787 general
+cargo run -- --username alice <ws-base-url> general
 ```
 
 Arguments:
 
-1. WebSocket base URL (default: `ws://127.0.0.1:8787`)
-2. Room ID (default: `general`)
+1. `--username <name>` or `-u <name>` (optional, or set `OXIDE_USERNAME`)
+2. WebSocket base URL (required, or set `OXIDE_WS_BASE`)
+3. Room ID (optional, default: `general`)
+
+If no username is provided, CLI uses `cli-<timestamp>`.
+
+Runtime commands (type in insert mode, then `Enter`):
+
+- `/ws <ws://host:port>` change WebSocket base URL and reconnect
+- `/room <room-id>` change room and reconnect
+- `/name <username>` change sender username
+- `/reconnect` reconnect using current base URL + room

@@ -14,6 +14,7 @@ dist/
 .idea/
 *.swp
 *.swo
+*.iml
 
 # OS
 .DS_Store
@@ -21,3 +22,11 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Android
+FRONTEND/android/.gradle/
+FRONTEND/android/.gradle-local/
+FRONTEND/android/.idea/
+FRONTEND/android/build/
+FRONTEND/android/**/build/
+FRONTEND/android/local.properties

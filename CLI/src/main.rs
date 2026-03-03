@@ -52,6 +52,7 @@ struct ChatLine {
 
 #[derive(Debug)]
 struct State {
+    ws_base: String,
     room_id: String,
     mode: Mode,
     input: String,
@@ -69,19 +70,21 @@ enum NetEvent {
     Disconnected(String),
 }
 
+#[derive(Debug, Clone, Copy)]
+enum UiAction {
+    Reconnect,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let ws_base = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "ws://127.0.0.1:8787".to_string());
-    let room_id = env::args().nth(2).unwrap_or_else(|| "general".to_string());
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let ws_url = format!("{}/room/{}", ws_base.trim_end_matches('/'), room_id);
-    let _ = Url::parse(&ws_url).context("invalid websocket URL")?;
+    let (ws_base, room_id, sender_id) = parse_cli_args()?;
 
-    let sender_id = format!("cli-{}", Utc::now().timestamp_millis());
+    let ws_url = room_ws_url(&ws_base, &room_id)?;
 
     let mut state = State {
+        ws_base,
         room_id,
         mode: Mode::Normal,
         input: String::new(),
@@ -92,7 +95,7 @@ async fn main() -> Result<()> {
         should_quit: false,
     };
 
-    let (outbound_tx, mut net_rx) = connect_room(&ws_url).await?;
+    let (mut outbound_tx, mut net_rx) = connect_room(&ws_url).await?;
     state.status = Status::Connected;
     state.status_text = "connected".to_string();
 
@@ -117,7 +120,34 @@ async fn main() -> Result<()> {
         select! {
             maybe_event = events.next() => {
                 if let Some(Ok(event)) = maybe_event {
-                    handle_event(event, &mut state, &outbound_tx);
+                    if let Some(action) = handle_event(event, &mut state, &outbound_tx) {
+                        match action {
+                            UiAction::Reconnect => {
+                                match room_ws_url(&state.ws_base, &state.room_id) {
+                                    Ok(next_url) => {
+                                        state.status = Status::Connecting;
+                                        state.status_text = format!("connecting {}", next_url);
+                                        match connect_room(&next_url).await {
+                                            Ok((new_tx, new_rx)) => {
+                                                outbound_tx = new_tx;
+                                                net_rx = new_rx;
+                                                state.status = Status::Connected;
+                                                state.status_text = "connected".to_string();
+                                            }
+                                            Err(err) => {
+                                                state.status = Status::Error;
+                                                state.status_text = err.to_string();
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        state.status = Status::Error;
+                                        state.status_text = err.to_string();
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             maybe_net = net_rx.recv() => {
@@ -153,6 +183,65 @@ async fn main() -> Result<()> {
     terminal.show_cursor()?;
 
     Ok(())
+}
+
+fn parse_cli_args() -> Result<(String, String, String)> {
+    let mut positional: Vec<String> = Vec::new();
+    let mut username: Option<String> = None;
+    let mut args = env::args().skip(1);
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--username" | "-u" => {
+                let value = args
+                    .next()
+                    .context("missing value for --username; usage: --username <name>")?;
+                if value.trim().is_empty() {
+                    anyhow::bail!("username cannot be empty");
+                }
+                username = Some(value.trim().to_string());
+            }
+            _ if arg.starts_with('-') => {
+                anyhow::bail!("unknown flag: {arg}");
+            }
+            _ => positional.push(arg),
+        }
+    }
+
+    if positional.len() > 2 {
+        anyhow::bail!("too many positional arguments; usage: cargo run -- [--username <name>] <ws-base-url> [room-id]");
+    }
+
+    let ws_base = positional
+        .first()
+        .cloned()
+        .or_else(|| env::var("OXIDE_WS_BASE").ok())
+        .context("missing websocket base URL; pass <ws-base-url> or set OXIDE_WS_BASE")?;
+    let room_id = positional
+        .get(1)
+        .cloned()
+        .unwrap_or_else(|| "general".to_string());
+    let sender_id = username
+        .or_else(|| env::var("OXIDE_USERNAME").ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("cli-{}", Utc::now().timestamp_millis()));
+
+    Ok((ws_base, room_id, sender_id))
+}
+
+fn room_ws_url(ws_base: &str, room_id: &str) -> Result<String> {
+    let base = ws_base.trim();
+    if !base.starts_with("ws://") && !base.starts_with("wss://") {
+        anyhow::bail!("websocket base URL must start with ws:// or wss://");
+    }
+    let ws_url = format!(
+        "{}/room/{}",
+        base.trim_end_matches('/'),
+        room_id.trim()
+    );
+    let _ = Url::parse(&ws_url).context("invalid websocket URL")?;
+    Ok(ws_url)
 }
 
 async fn connect_room(
@@ -230,15 +319,19 @@ fn handle_event(
     event: CEvent,
     state: &mut State,
     outbound_tx: &mpsc::UnboundedSender<WireMessage>,
-) {
+) -> Option<UiAction> {
     match event {
         CEvent::Key(key) if key.kind == KeyEventKind::Press => handle_key(key, state, outbound_tx),
-        CEvent::Resize(_, _) => {}
-        _ => {}
+        CEvent::Resize(_, _) => None,
+        _ => None,
     }
 }
 
-fn handle_key(key: KeyEvent, state: &mut State, outbound_tx: &mpsc::UnboundedSender<WireMessage>) {
+fn handle_key(
+    key: KeyEvent,
+    state: &mut State,
+    outbound_tx: &mpsc::UnboundedSender<WireMessage>,
+) -> Option<UiAction> {
     match state.mode {
         Mode::Normal => match key.code {
             KeyCode::Char('q') => state.should_quit = true,
@@ -250,7 +343,57 @@ fn handle_key(key: KeyEvent, state: &mut State, outbound_tx: &mpsc::UnboundedSen
             KeyCode::Enter => {
                 let text = state.input.trim().to_string();
                 if text.is_empty() {
-                    return;
+                    return None;
+                }
+
+                if let Some(next_base) = text.strip_prefix("/ws ").map(str::trim) {
+                    if next_base.is_empty() {
+                        state.status = Status::Error;
+                        state.status_text = "usage: /ws <ws://host:port>".to_string();
+                    } else {
+                        state.ws_base = next_base.to_string();
+                        state.status = Status::Connecting;
+                        state.status_text = format!("switching websocket base to {}", state.ws_base);
+                        state.input.clear();
+                        return Some(UiAction::Reconnect);
+                    }
+                    state.input.clear();
+                    return None;
+                }
+
+                if let Some(next_room) = text.strip_prefix("/room ").map(str::trim) {
+                    if next_room.is_empty() {
+                        state.status = Status::Error;
+                        state.status_text = "usage: /room <room-id>".to_string();
+                    } else {
+                        state.room_id = next_room.to_string();
+                        state.status = Status::Connecting;
+                        state.status_text = format!("switching room to {}", state.room_id);
+                        state.input.clear();
+                        return Some(UiAction::Reconnect);
+                    }
+                    state.input.clear();
+                    return None;
+                }
+
+                if text == "/reconnect" {
+                    state.status = Status::Connecting;
+                    state.status_text = "reconnecting".to_string();
+                    state.input.clear();
+                    return Some(UiAction::Reconnect);
+                }
+
+                if let Some(next_name) = text.strip_prefix("/name ").map(str::trim) {
+                    if next_name.is_empty() {
+                        state.status = Status::Error;
+                        state.status_text = "usage: /name <username>".to_string();
+                    } else {
+                        state.sender_id = next_name.to_string();
+                        state.status = Status::Connected;
+                        state.status_text = format!("username set to {}", state.sender_id);
+                    }
+                    state.input.clear();
+                    return None;
                 }
 
                 let msg = WireMessage {
@@ -262,7 +405,7 @@ fn handle_key(key: KeyEvent, state: &mut State, outbound_tx: &mpsc::UnboundedSen
                 if let Err(err) = outbound_tx.send(msg.clone()) {
                     state.status = Status::Error;
                     state.status_text = format!("send queue error: {err}");
-                    return;
+                    return None;
                 }
 
                 state.messages.push(ChatLine {
@@ -281,6 +424,7 @@ fn handle_key(key: KeyEvent, state: &mut State, outbound_tx: &mpsc::UnboundedSen
             _ => {}
         },
     }
+    None
 }
 
 fn decode_payload(bytes: &[u8]) -> String {
@@ -317,6 +461,18 @@ fn ui(frame: &mut Frame, state: &State) {
     };
 
     let header = Paragraph::new(Line::from(vec![
+        Span::styled("Base: ", Style::default().fg(TEXT).bg(Color::Reset)),
+        Span::styled(
+            state.ws_base.as_str(),
+            Style::default().fg(TEXT).bg(Color::Reset),
+        ),
+        Span::styled(" | ", Style::default().fg(TEXT).bg(Color::Reset)),
+        Span::styled("User: ", Style::default().fg(TEXT).bg(Color::Reset)),
+        Span::styled(
+            state.sender_id.as_str(),
+            Style::default().fg(TEXT).bg(Color::Reset),
+        ),
+        Span::styled(" | ", Style::default().fg(TEXT).bg(Color::Reset)),
         Span::styled("Room: ", Style::default().fg(TEXT).bg(Color::Reset)),
         Span::styled(
             state.room_id.as_str(),
@@ -386,7 +542,7 @@ fn ui(frame: &mut Frame, state: &State) {
         .style(Style::default().fg(TEXT).bg(Color::Reset))
         .block(
             Block::default()
-                .title("Input (i: insert, Esc: normal, q: quit)")
+                .title("Input (i: insert, Esc: normal, q: quit, /ws, /room, /name, /reconnect)")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(BLUE).bg(Color::Reset))
                 .style(Style::default().bg(Color::Reset)),

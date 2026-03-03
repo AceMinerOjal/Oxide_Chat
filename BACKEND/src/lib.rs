@@ -41,16 +41,14 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 #[durable_object]
 pub struct ChatRoom {
     state: State,
-    env: Env,
 }
 
-#[durable_object]
 impl DurableObject for ChatRoom {
-    fn new(state: State, env: Env) -> Self {
-        Self { state, env }
+    fn new(state: State, _env: Env) -> Self {
+        Self { state }
     }
 
-    async fn fetch(&mut self, req: Request) -> Result<Response> {
+    async fn fetch(&self, req: Request) -> Result<Response> {
         self.ensure_schema()
             .await
             .map_err(|e| Error::RustError(e.to_string()))?;
@@ -65,13 +63,13 @@ impl DurableObject for ChatRoom {
         let server = pair.server;
 
         // Durable Object WebSocket hibernation acceptance.
-        self.state.accept_websocket(&server)?;
+        self.state.accept_web_socket(&server);
 
         Response::from_websocket(client)
     }
 
     async fn websocket_message(
-        &mut self,
+        &self,
         ws: WebSocket,
         message: WebSocketIncomingMessage,
     ) -> Result<()> {
@@ -87,7 +85,7 @@ impl DurableObject for ChatRoom {
 
         // Relay encrypted payload as-is to all connected peers in the room.
         for peer in self.state.get_websockets() {
-            if peer.serialize_attachment().ok() != ws.serialize_attachment().ok() {
+            if peer != ws {
                 let _ = peer.send_with_bytes(&bytes);
             }
         }
@@ -98,30 +96,22 @@ impl DurableObject for ChatRoom {
 
 impl ChatRoom {
     async fn ensure_schema(&self) -> anyhow::Result<()> {
-        let sql = self
-            .state
-            .storage()
-            .sql()
-            .context("failed to get SQLite handle from durable object state")?;
-        sql.exec(CREATE_MESSAGES_TABLE_SQL)
+        let sql = self.state.storage().sql();
+        sql.exec(CREATE_MESSAGES_TABLE_SQL, None::<Vec<SqlStorageValue>>)
             .context("failed to apply messages schema migration")?;
         Ok(())
     }
 
     async fn persist_message(&self, message: &WireMessage) -> anyhow::Result<()> {
-        let sql = self
-            .state
-            .storage()
-            .sql()
-            .context("failed to get SQLite handle from durable object state")?;
+        let sql = self.state.storage().sql();
 
-        sql.exec_with_bindings(
+        sql.exec(
             "INSERT INTO messages (sender_id, payload_cipher, created_at) VALUES (?, ?, ?)",
-            vec![
+            Some(vec![
                 message.sender_id.clone().into(),
                 message.payload_cipher.clone().into(),
                 message.created_at.into(),
-            ],
+            ]),
         )
         .context("failed to insert encrypted message into messages table")?;
 

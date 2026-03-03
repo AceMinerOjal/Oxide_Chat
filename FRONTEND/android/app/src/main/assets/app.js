@@ -2,6 +2,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
 import {
   getAuth,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   GithubAuthProvider,
   onAuthStateChanged,
@@ -25,11 +27,35 @@ const roomIdEl = document.getElementById("roomId");
 const composer = document.getElementById("composer");
 const messageInputEl = document.getElementById("messageInput");
 
+const BASE_URL_STORAGE_KEY = "oxide.baseUrl";
+const ROOM_ID_STORAGE_KEY = "oxide.roomId";
+
 const firebaseConfig = getFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 let currentUser = null;
 let socket = null;
+const isAndroidWebView = /\bAndroid\b/i.test(globalThis.navigator?.userAgent || "");
+
+if (baseUrlEl) {
+  const savedBaseUrl = globalThis.localStorage?.getItem(BASE_URL_STORAGE_KEY);
+  baseUrlEl.value = savedBaseUrl || "";
+}
+
+if (roomIdEl) {
+  const savedRoomId = globalThis.localStorage?.getItem(ROOM_ID_STORAGE_KEY);
+  if (savedRoomId) {
+    roomIdEl.value = savedRoomId;
+  }
+}
+
+baseUrlEl?.addEventListener("change", () => {
+  globalThis.localStorage?.setItem(BASE_URL_STORAGE_KEY, baseUrlEl.value.trim());
+});
+
+roomIdEl?.addEventListener("change", () => {
+  globalThis.localStorage?.setItem(ROOM_ID_STORAGE_KEY, roomIdEl.value.trim());
+});
 
 const showToast = (message) => {
   toastEl.textContent = message;
@@ -98,16 +124,26 @@ async function parseIncomingMessageData(data) {
 }
 
 function buildRoomSocketUrl() {
-  const base = baseUrlEl.value.trim().replace(/\/$/, "");
+  const rawBase = baseUrlEl.value.trim();
   const roomId = roomIdEl.value.trim();
-  if (!base || !roomId) {
+  if (!rawBase || !roomId) {
     throw new Error("Base URL and room ID are required");
   }
 
-  if (!base.startsWith("ws://") && !base.startsWith("wss://")) {
+  if (!rawBase.startsWith("ws://") && !rawBase.startsWith("wss://")) {
     throw new Error("Base URL must start with ws:// or wss://");
   }
 
+  const url = new URL(rawBase);
+  const isLocalHost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  const isAndroidWebView = /\bAndroid\b/i.test(globalThis.navigator?.userAgent || "");
+
+  // Android emulator cannot reach host localhost directly.
+  if (isLocalHost && isAndroidWebView) {
+    url.hostname = "10.0.2.2";
+  }
+
+  const base = url.toString().replace(/\/$/, "");
   return `${base}/room/${encodeURIComponent(roomId)}`;
 }
 
@@ -202,10 +238,21 @@ const login = async (ProviderClass) => {
   try {
     const provider = new ProviderClass();
     provider.setCustomParameters({ prompt: "select_account" });
+
+    // Firebase popups are often blocked or unsupported inside Android WebView.
+    if (isAndroidWebView) {
+      showToast("Opening sign-in...");
+      setStatus("Redirecting to provider login...", "#89b4fa");
+      await signInWithRedirect(auth, provider);
+      return;
+    }
+
     await signInWithPopup(auth, provider);
   } catch (err) {
     console.error("Auth error:", err?.code || "unknown");
-    showToast("Authentication failed. Please try again.");
+    const code = err?.code || "unknown";
+    showToast(`Authentication failed (${code})`);
+    setStatus(`Authentication failed: ${code}`, "#f38ba8");
   }
 };
 
@@ -235,6 +282,15 @@ onAuthStateChanged(auth, (user) => {
   setConnectedState(false);
   setAuthUi(null);
 });
+
+if (isAndroidWebView) {
+  getRedirectResult(auth).catch((err) => {
+    console.error("Redirect auth error:", err?.code || "unknown");
+    const code = err?.code || "unknown";
+    showToast(`Redirect auth failed (${code})`);
+    setStatus(`Redirect auth failed: ${code}`, "#f38ba8");
+  });
+}
 
 connectBtn.addEventListener("click", () => {
   try {
