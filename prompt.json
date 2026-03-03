@@ -1,0 +1,34 @@
+{
+  "project": "oxide_chat_cli",
+  "directory_structure": "CLI/src/main.rs",
+  "dependencies": [
+    "ratatui (v0.26+)",
+    "crossterm (v0.27+)",
+    "tokio (full features)",
+    "tokio-tungstenite (WebSockets)",
+    "serde & serde_json (Matching Backend WireMessage)",
+    "futures-util (Stream splitting)"
+  ],
+  "technical_requirements": {
+    "rendering": {
+      "transparency": "Crucial. Do NOT set a background color for the root layout or blocks. Use Style::default().bg(Color::Reset).",
+      "palette": "Catppuccin Mocha. Blue (#89b4fa) for borders, Green (#a6e3a1) for successful connection, Red (#f38ba8) for errors, Text (#cdd6f4) for messages."
+    },
+    "async_logic": {
+      "network": "A dedicated Tokio task to handle the WebSocket stream from the Backend Worker.",
+      "input": "Handle terminal events (crossterm) to capture keystrokes without blocking the UI refresh.",
+      "protocol": "Must follow the '/room/{id}' path and use the 'WireMessage' JSON structure for sending/receiving payloads."
+    },
+    "user_interface": {
+      "layout": "Header (Status/Room), Body (Scrollable message list), Footer (Input bar).",
+      "navigation": "Vim-style keybindings: 'i' to enter Insert Mode, 'Esc' to return to Normal Mode, 'q' to quit."
+    }
+  },
+  "ai_instructions": [
+    "1. Create a 'WireMessage' struct that mirrors the Backend's Rust definition exactly.",
+    "2. Implement a 'State' struct to track the message history, connection status, and current input buffer.",
+    "3. Use 'tokio::select!' in the main loop to balance WebSocket messages and keyboard events.",
+    "4. Ensure the UI is responsive to terminal resizing events.",
+    "5. For the 'payload_cipher', implement a temporary UTF-8 decoder that matches the mobile app's current logic until the E2EE core is integrated."
+  ]
+}

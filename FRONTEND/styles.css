@@ -1,0 +1,109 @@
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(circle at 8% 15%, rgba(137, 180, 250, 0.16), transparent 38%),
+    radial-gradient(circle at 85% 8%, rgba(166, 227, 161, 0.12), transparent 35%),
+    radial-gradient(circle at 60% 88%, rgba(243, 139, 168, 0.14), transparent 32%),
+    #1e1e2e;
+}
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(120deg, rgba(137, 180, 250, 0.04), rgba(166, 227, 161, 0.03), rgba(243, 139, 168, 0.03));
+  animation: drift 12s ease-in-out infinite alternate;
+}
+
+@keyframes drift {
+  0% {
+    transform: translateY(-8px);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(8px);
+    opacity: 1;
+  }
+}
+
+.glass-panel {
+  border: 1px solid rgba(137, 180, 250, 0.3);
+  background: rgba(30, 30, 46, 0.62);
+  backdrop-filter: blur(8px);
+}
+
+.field {
+  width: 100%;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(137, 180, 250, 0.45);
+  background: rgba(24, 24, 37, 0.85);
+  color: #cdd6f4;
+  padding: 0.65rem 0.75rem;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.field:focus {
+  border-color: #a6e3a1;
+  box-shadow: 0 0 0 2px rgba(166, 227, 161, 0.25);
+}
+
+.btn {
+  border-radius: 0.85rem;
+  border: 1px solid transparent;
+  padding: 0.65rem 0.75rem;
+  font-weight: 600;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: rgba(137, 180, 250, 0.22);
+  border-color: rgba(137, 180, 250, 0.65);
+  color: #89b4fa;
+}
+
+.btn-muted {
+  background: rgba(205, 214, 244, 0.09);
+  border-color: rgba(205, 214, 244, 0.2);
+  color: #cdd6f4;
+}
+
+.btn-accent {
+  background: rgba(166, 227, 161, 0.18);
+  border-color: rgba(166, 227, 161, 0.65);
+  color: #a6e3a1;
+}
+
+.message {
+  border-radius: 0.85rem;
+  border: 1px solid rgba(137, 180, 250, 0.32);
+  background: rgba(17, 17, 27, 0.75);
+  padding: 0.6rem 0.7rem;
+}
+
+.message.me {
+  border-color: rgba(166, 227, 161, 0.45);
+}
+
+.message .meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  opacity: 0.8;
+}
+
+.message .body {
+  margin-top: 0.25rem;
+  word-break: break-word;
+}

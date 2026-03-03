@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Oxide Chat Mobile</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              mocha: {
+                base: '#1e1e2e',
+                blue: '#89b4fa',
+                green: '#a6e3a1',
+                red: '#f38ba8',
+                text: '#cdd6f4'
+              }
+            },
+            fontFamily: {
+              display: ['Space Grotesk', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace']
+            }
+          }
+        }
+      };
+    </script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="min-h-screen bg-mocha-base text-mocha-text font-display">
+    <div class="aurora"></div>
+
+    <main class="relative z-10 mx-auto flex min-h-screen w-full max-w-md flex-col px-4 py-6">
+      <header class="mb-6">
+        <p class="text-xs uppercase tracking-[0.28em] text-mocha-blue/80">oxide chat</p>
+        <h1 class="mt-2 text-3xl font-bold leading-tight">Encrypted Room Link</h1>
+      </header>
+
+      <section class="glass-panel rounded-3xl p-4">
+        <div class="grid grid-cols-1 gap-3">
+          <label class="text-sm">
+            <span class="mb-1 block text-mocha-text/80">WebSocket Base URL</span>
+            <input id="baseUrl" class="field" type="text" value="ws://127.0.0.1:8787" />
+          </label>
+
+          <label class="text-sm">
+            <span class="mb-1 block text-mocha-text/80">Room ID</span>
+            <input id="roomId" class="field" type="text" value="general" />
+          </label>
+
+          <div class="mt-1 flex gap-2">
+            <button id="connectBtn" class="btn btn-primary flex-1">Connect</button>
+            <button id="disconnectBtn" class="btn btn-muted flex-1" disabled>Disconnect</button>
+          </div>
+
+          <p id="status" class="font-mono text-xs text-mocha-text/80">Disconnected</p>
+        </div>
+      </section>
+
+      <section class="mt-4 flex-1 rounded-3xl glass-panel p-3">
+        <ul id="messages" class="h-[44vh] space-y-2 overflow-y-auto pr-1"></ul>
+      </section>
+
+      <form id="composer" class="mt-4 flex gap-2">
+        <input id="messageInput" class="field flex-1" type="text" placeholder="Type encrypted payload..." autocomplete="off" />
+        <button class="btn btn-accent" type="submit">Send</button>
+      </form>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
