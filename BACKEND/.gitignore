@@ -1,0 +1,15 @@
+# Rust build outputs
+/target/
+
+# Cloudflare Wrangler local/build artifacts
+/.wrangler/
+/build/
+
+# Environment and local overrides
+.env
+.env.*
+!.env.example
+
+# Editor/system noise
+.DS_Store
+Thumbs.db

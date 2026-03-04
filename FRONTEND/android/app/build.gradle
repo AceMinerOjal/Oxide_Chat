@@ -4,20 +4,25 @@ plugins {
 }
 
 android {
-    namespace 'com.ojalkhatiwada.oxidechat'
-    compileSdk 34
+    namespace = 'com.ojalkhatiwada.oxidechat'
+    compileSdk = 34
 
     defaultConfig {
-        applicationId "com.ojalkhatiwada.oxidechat"
-        minSdk 24
-        targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        applicationId = "com.ojalkhatiwada.oxidechat"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        debug {
+            manifestPlaceholders = [usesCleartextTraffic: "true"]
+        }
         release {
-            minifyEnabled false
+            minifyEnabled = false
+            manifestPlaceholders = [usesCleartextTraffic: "false"]
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -30,9 +35,33 @@ android {
     kotlinOptions {
         jvmTarget = '17'
     }
+
+    lint {
+        // Keep lint focused on correctness/security; version drift is tracked separately.
+        disable += ['GradleDependency']
+    }
+}
+
+tasks.register('syncFrontendWebAssets', Sync) {
+    def webRoot = new File(rootProject.projectDir.parentFile, "web")
+    from(webRoot)
+    into("$projectDir/src/main/assets")
+}
+
+tasks.named('preBuild').configure {
+    dependsOn('syncFrontendWebAssets')
 }
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.webkit:webkit:1.11.0'
+    implementation platform('com.google.firebase:firebase-bom:34.9.0')
+    implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.android.gms:play-services-auth:21.2.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+    androidTestImplementation 'androidx.test:core-ktx:1.6.1'
 }

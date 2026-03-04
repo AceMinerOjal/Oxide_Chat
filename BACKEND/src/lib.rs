@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context as AnyhowContext};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use worker::*;
 
@@ -6,16 +7,42 @@ const CREATE_MESSAGES_TABLE_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sender_id TEXT NOT NULL,
+    avatar_url TEXT,
     payload_cipher BLOB NOT NULL,
     created_at INTEGER NOT NULL
 );
 "#;
+const PRESENCE_JOIN: &str = "presence.join";
+const PRESENCE_LEAVE: &str = "presence.leave";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct WireMessage {
     sender_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    avatar_url: Option<String>,
     payload_cipher: Vec<u8>,
     created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PresenceEvent {
+    kind: String,
+    sender_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    avatar_url: Option<String>,
+    created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SessionAttachment {
+    sender_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    avatar_url: Option<String>,
+}
+
+enum IncomingFrame {
+    Chat(WireMessage),
+    Presence(PresenceEvent),
 }
 
 #[event(fetch)]
@@ -78,16 +105,42 @@ impl DurableObject for ChatRoom {
             WebSocketIncomingMessage::Binary(data) => data,
         };
 
-        let parsed = parse_wire_message(&bytes).map_err(|e| Error::RustError(e.to_string()))?;
-        self.persist_message(&parsed)
-            .await
-            .map_err(|e| Error::RustError(e.to_string()))?;
+        match parse_incoming_frame(&bytes).map_err(|e| Error::RustError(e.to_string()))? {
+            IncomingFrame::Chat(parsed) => {
+                self.persist_message(&parsed)
+                    .await
+                    .map_err(|e| Error::RustError(e.to_string()))?;
 
-        // Relay encrypted payload as-is to all connected peers in the room.
-        for peer in self.state.get_websockets() {
-            if peer != ws {
-                let _ = peer.send_with_bytes(&bytes);
+                self.set_session_attachment(&ws, &parsed.sender_id, parsed.avatar_url.clone());
+                // Relay encrypted payload as-is to all connected peers in the room.
+                self.broadcast_bytes_except(&ws, &bytes);
             }
+            IncomingFrame::Presence(event) => {
+                if event.kind == PRESENCE_JOIN {
+                    self.set_session_attachment(&ws, &event.sender_id, event.avatar_url.clone());
+                    self.broadcast_presence_except(&ws, &event);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn websocket_close(
+        &self,
+        ws: WebSocket,
+        _code: usize,
+        _reason: String,
+        _was_clean: bool,
+    ) -> Result<()> {
+        if let Ok(Some(session)) = ws.deserialize_attachment::<SessionAttachment>() {
+            let leave = PresenceEvent {
+                kind: PRESENCE_LEAVE.to_string(),
+                sender_id: session.sender_id,
+                avatar_url: session.avatar_url,
+                created_at: Utc::now().timestamp_millis(),
+            };
+            self.broadcast_presence_except(&ws, &leave);
         }
 
         Ok(())
@@ -99,6 +152,17 @@ impl ChatRoom {
         let sql = self.state.storage().sql();
         sql.exec(CREATE_MESSAGES_TABLE_SQL, None::<Vec<SqlStorageValue>>)
             .context("failed to apply messages schema migration")?;
+        // Backfill older tables that were created before avatar_url existed.
+        if let Err(err) = sql.exec(
+            "ALTER TABLE messages ADD COLUMN avatar_url TEXT",
+            None::<Vec<SqlStorageValue>>,
+        ) {
+            let msg = err.to_string();
+            if !msg.contains("duplicate column name: avatar_url") {
+                return Err(anyhow::anyhow!(msg))
+                    .context("failed to migrate messages table with avatar_url");
+            }
+        }
         Ok(())
     }
 
@@ -106,9 +170,14 @@ impl ChatRoom {
         let sql = self.state.storage().sql();
 
         sql.exec(
-            "INSERT INTO messages (sender_id, payload_cipher, created_at) VALUES (?, ?, ?)",
+            "INSERT INTO messages (sender_id, avatar_url, payload_cipher, created_at) VALUES (?, ?, ?, ?)",
             Some(vec![
                 message.sender_id.clone().into(),
+                message
+                    .avatar_url
+                    .clone()
+                    .map(SqlStorageValue::from)
+                    .unwrap_or(SqlStorageValue::Null),
                 message.payload_cipher.clone().into(),
                 message.created_at.into(),
             ]),
@@ -117,14 +186,44 @@ impl ChatRoom {
 
         Ok(())
     }
+
+    fn broadcast_presence_except(&self, ws: &WebSocket, event: &PresenceEvent) {
+        if let Ok(bytes) = serde_json::to_vec(event) {
+            self.broadcast_bytes_except(ws, &bytes);
+        }
+    }
+
+    fn set_session_attachment(&self, ws: &WebSocket, sender_id: &str, avatar_url: Option<String>) {
+        let _ = ws.serialize_attachment(SessionAttachment {
+            sender_id: sender_id.to_string(),
+            avatar_url,
+        });
+    }
+
+    fn broadcast_bytes_except(&self, ws: &WebSocket, bytes: &[u8]) {
+        for peer in self.state.get_websockets() {
+            if peer != *ws {
+                let _ = peer.send_with_bytes(bytes);
+            }
+        }
+    }
 }
 
-fn parse_wire_message(bytes: &[u8]) -> anyhow::Result<WireMessage> {
+fn parse_incoming_frame(bytes: &[u8]) -> anyhow::Result<IncomingFrame> {
+    if let Ok(v) = serde_json::from_slice::<PresenceEvent>(bytes) {
+        if v.kind == PRESENCE_JOIN {
+            return Ok(IncomingFrame::Presence(v));
+        }
+        return Err(anyhow!(
+            "unsupported presence event kind; expected presence.join"
+        ));
+    }
+
     if let Ok(v) = serde_json::from_slice::<WireMessage>(bytes) {
-        return Ok(v);
+        return Ok(IncomingFrame::Chat(v));
     }
 
     Err(anyhow!(
-        "message payload must be JSON encoded WireMessage for persistence"
+        "message payload must be JSON encoded WireMessage or supported presence event"
     ))
 }

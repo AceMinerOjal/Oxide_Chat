@@ -6,6 +6,10 @@
     <title>Oxide Chat Mobile</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://www.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -29,6 +33,10 @@
         }
       };
     </script>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body class="min-h-screen bg-mocha-base text-mocha-text font-display">
@@ -42,22 +50,28 @@
 
       <section id="authPanel" class="glass-panel rounded-3xl p-4">
         <p class="mb-3 text-sm text-mocha-text/80">Sign in to start chatting</p>
-        <div class="flex gap-2">
-          <button id="googleBtn" class="btn btn-primary flex-1" type="button">Google</button>
-          <button id="githubBtn" class="btn btn-muted flex-1" type="button">GitHub</button>
+        <div class="flex">
+          <button id="googleBtn" class="btn btn-primary w-full" type="button"><i class="fa-brands fa-google"></i> Continue with Google</button>
         </div>
       </section>
 
       <section id="chatShell" class="hidden">
         <section class="glass-panel rounded-3xl p-4">
-          <div class="mb-3 flex items-center justify-between">
-            <p id="userChip" class="font-mono text-xs text-mocha-text/85">Signed in</p>
-            <button id="logoutBtn" class="btn btn-muted py-2" type="button">Logout</button>
+          <div class="mb-3 flex items-start justify-between gap-3">
+            <div class="profile">
+              <img id="profileAvatar" class="profile-avatar" alt="Signed in user avatar" />
+              <div class="profile-meta">
+                <p id="userChip" class="font-mono text-xs text-mocha-text/90">Signed in</p>
+                <p id="userEmail" class="font-mono text-[0.68rem] text-mocha-text/70">No email available</p>
+                <p id="userUid" class="font-mono text-[0.66rem] text-mocha-text/55">UID</p>
+              </div>
+            </div>
+            <button id="logoutBtn" class="btn btn-muted py-2" type="button"><i class="fas fa-right-from-bracket"></i> Logout</button>
           </div>
           <div class="grid grid-cols-1 gap-3">
             <label class="text-sm">
               <span class="mb-1 block text-mocha-text/80">WebSocket Base URL</span>
-              <input id="baseUrl" class="field" type="text" placeholder="ws://your-host:8787" />
+              <input id="baseUrl" class="field" type="text" placeholder="wss://your-host.example.com" />
             </label>
 
             <label class="text-sm">
@@ -66,8 +80,8 @@
             </label>
 
             <div class="mt-1 flex gap-2">
-              <button id="connectBtn" class="btn btn-primary flex-1">Connect</button>
-              <button id="disconnectBtn" class="btn btn-muted flex-1" disabled>Disconnect</button>
+              <button id="connectBtn" class="btn btn-primary flex-1"><i class="fas fa-plug"></i> Connect</button>
+              <button id="disconnectBtn" class="btn btn-muted flex-1" disabled><i class="fas fa-link-slash"></i> Disconnect</button>
             </div>
 
             <p id="status" class="font-mono text-xs text-mocha-text/80">Disconnected</p>
@@ -80,7 +94,7 @@
 
         <form id="composer" class="mt-4 flex gap-2">
           <input id="messageInput" class="field flex-1" type="text" placeholder="Type encrypted payload..." autocomplete="off" />
-          <button class="btn btn-accent" type="submit">Send</button>
+          <button class="btn btn-accent" type="submit"><i class="fas fa-paper-plane"></i> Send</button>
         </form>
       </section>
 

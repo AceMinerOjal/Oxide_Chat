@@ -1,17 +1,22 @@
 # Oxide Chat
 
-Rust-based chat project with a shared wire format across backend, CLI, and frontend.
-This repository is a template: replace placeholder config and endpoints with your own infrastructure before use.
+Oxide Chat is a shared protocol chat stack with:
+
+- a Cloudflare Worker backend (`BACKEND/`)
+- a terminal client (`CLI/`)
+- a web UI plus Android WebView shell (`FRONTEND/`)
+
+All clients send the same wire payload so they can interoperate without translation.
 
 ## Repository Layout
 
-- `BACKEND/`: Cloudflare Worker + Durable Object WebSocket room backend
-- `CLI/`: Ratatui terminal chat client (Vim-style controls)
-- `FRONTEND/`: Mobile-first web UI and Android WebView wrapper
+- `BACKEND/`: room-based WebSocket relay + Durable Object persistence
+- `CLI/`: Ratatui terminal client with reconnect/switch-room commands
+- `FRONTEND/`: browser UI and Android wrapper using the same app assets
 
-## Protocol
+## Wire Protocol
 
-All clients use the same JSON `WireMessage` payload:
+Chat messages are JSON:
 
 ```json
 {
@@ -21,43 +26,58 @@ All clients use the same JSON `WireMessage` payload:
 }
 ```
 
-WebSocket endpoint format:
+WebSocket route shape is always:
 
-- `/room/{id}`
+```text
+/room/{room_id}
+```
 
-## Quick Start
+## Endpoint Configuration
 
-1. Run backend
+Use a WebSocket base URL (host only), then clients append `/room/{room_id}`.
+
+Examples:
+
+- local dev base: `ws://127.0.0.1:8787`
+- deployed base: `wss://chat.example.com`
+
+Important:
+
+- The backend does not auto-detect or default to your personal domain.
+- Frontend defaults are placeholders (`wss://your-host.example.com`) until you set your own value.
+
+## Quick Start (Local)
+
+1. Start backend dev server.
 
 ```bash
 cd BACKEND
-# configure wrangler auth/bindings first
-wrangler dev
+make dev
 ```
 
-2. Run CLI client
+2. Start CLI client.
 
 ```bash
 cd CLI
-cargo run -- --username alice <ws-base-url> general
+cargo run -- --username alice ws://127.0.0.1:8787 general
 ```
 
-Controls:
+CLI controls:
 
-- `i` enter insert mode
-- `Esc` return to normal mode
-- `q` quit
+- `i`: insert mode
+- `Esc`: normal mode
+- `q`: quit
 
-3. Run web frontend (optional)
+3. Start web frontend.
 
 ```bash
-cd FRONTEND
+cd FRONTEND/web
 python -m http.server 3000
 ```
 
-Open `http://127.0.0.1:3000`.
+Open `http://127.0.0.1:3000`, sign in, set base URL to `ws://127.0.0.1:8787`, then connect.
 
-4. Build Android app (optional)
+## Android Build (Optional)
 
 ```bash
 cd FRONTEND/android
@@ -65,13 +85,17 @@ cd FRONTEND/android
 ```
 
 APK output:
+
 `FRONTEND/android/app/build/outputs/apk/debug/app-debug.apk`
+
+## Firebase Config
+
+Set Firebase values before running frontend auth:
+
+- `FRONTEND/web/assets/js/firebase-config.js`
+- `FRONTEND/android/app/src/main/assets/assets/js/firebase-config.js`
 
 ## Notes
 
-- `payload_cipher` currently uses UTF-8 bytes until shared E2EE is integrated.
+- `payload_cipher` is currently UTF-8 bytes until shared E2EE is added.
 - Backend stores encrypted payload bytes in Durable Object SQLite storage.
-- Android sign-in uses Firebase redirect flow inside WebView.
-- Fill in your Firebase config placeholders in:
-  - `FRONTEND/assets/js/firebase-config.js`
-  - `FRONTEND/android/app/src/main/assets/assets/js/firebase-config.js`

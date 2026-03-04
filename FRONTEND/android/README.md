@@ -2,6 +2,11 @@
 
 This folder wraps the `FRONTEND` web app in an Android WebView app.
 
+## Prerequisites
+
+- Android Studio or Android SDK + Gradle
+- Firebase project config added to bundled web assets
+
 ## Build
 
 Android Studio:
@@ -22,12 +27,12 @@ Debug APK:
 
 ## Notes
 - The bundled web assets are under `app/src/main/assets/`.
-- Firebase Google/GitHub sign-in is required before chat connect.
-- Android auth uses Firebase redirect flow in WebView.
+- Firebase Google sign-in is required before chat connect.
+- Android auth can use native bridge flow from the WebView shell.
 - Fill in Firebase placeholders before building:
-  - `FRONTEND/assets/js/firebase-config.js`
+  - `FRONTEND/web/assets/js/firebase-config.js`
   - `FRONTEND/android/app/src/main/assets/assets/js/firebase-config.js`
-- WebSocket endpoint has no hardcoded default in the UI.
-- The endpoint is user-provided and persisted between launches.
+- WebSocket base URL has a placeholder default (`wss://your-host.example.com`) until user sets a real value.
+- Base URL + room are user-provided and persisted between launches.
 - For Android emulator + local backend, use:
   `ws://10.0.2.2:<port>`
